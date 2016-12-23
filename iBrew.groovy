@@ -1,21 +1,25 @@
 import groovy.json.JsonSlurper
 
 metadata {
-	definition (name: "iBrew", namespace: "ask4", author: "JB") {
+	definition (name: "iBrew-development", namespace: "ask4", author: "JB") {
 		capability "Polling"
 		capability "Refresh"
 		capability "Switch"
+        capability 	"Sensor"
        	capability 	"Temperature Measurement"
         
 		command "refresh"
+        command "subscribe"
 
 		attribute "network","string"
 		attribute "bin","string"
+        
 	}
     
 	preferences {
 		input("ip", "text", title: "IP Address", description: "iBrew Server Address", required: true, displayDuringSetup: true)
 		input("port", "number", title: "Port Number", description: "Port Number (Default:80)", defaultValue: "2080", required: true, displayDuringSetup: true)
+        input("mac", "text", title: "MAC Addr", description: "mac")
 	}
 
 	tiles {
@@ -32,6 +36,10 @@ metadata {
             state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
         }
         
+        standardTile("subscribe", "device.switch", inactiveLabel: false, height: 1, width: 1, decoration: "flat") {
+            state "default", label:"", action:"subscribe", icon:"st.Appliances.appliances3"
+        }
+        
         standardTile("temperature", "device.temperature", inactiveLabel: false, height: 1, width: 1, decoration: "flat") {
             state "default", label:'${currentValue}°', unit:"C", icon:"st.Weather.weather2"
         }
@@ -44,15 +52,16 @@ def parse(String description) {
 	def bodyString
 	def slurper
 	def result
-
+   
+    //log.debug description
 	map = stringToMap(description)
 	headerString = new String(map.headers.decodeBase64())
 	if (headerString.contains("200 OK")) {
 		bodyString = new String(map.body.decodeBase64())
 		slurper = new JsonSlurper()
 		result = slurper.parseText(bodyString)
-        log.debug "Result" + result.sensors.status
-		switch (result.sensors.status) {
+
+		switch (result.status) {
 			case "ready":
 				sendEvent(name: 'switch', value: "off" as String)
 			break;
@@ -66,8 +75,26 @@ def parse(String description) {
 			
 		}
 	else {
-		sendEvent(name: 'status', value: "error" as String)
-		log.debug headerString
+        //processes callbacks
+   		bodyString = new String(map.body.decodeBase64())
+		slurper = new JsonSlurper()
+		result = slurper.parseText(bodyString)
+        log.debug result
+        
+        log.debug result.kettleheater
+        if (result.kettleheater.toString() == "true") {
+            log.debug "The kettle is on"
+        	sendEvent(name: 'switch', value: "on" as String)
+        }
+        
+        log.debug result.kettlebusy
+        if (result.kettlebusy.toString() == "false") {
+            log.debug "The kettle is off"
+        	sendEvent(name: 'switch', value: "off" as String)
+        }
+        
+        sendEvent(name: "temperature", value: result.temperature, unit: "C")   
+        log.debug "temp = " + result.temperature
 	}
 	parse
 }
@@ -120,23 +147,39 @@ def refresh() {
 	log.debug "Executing 'refresh'"
 	ipSetup()
 	api('refresh')
+    
+}
+
+def subscribe (){
+	log.debug "Executing 'subscribe'"
+	ipSetup()
+	subscribeAction()
+}
+
+
+//Process callbacks
+def processResponse(resp){
+	map = stringToMap(resp)
+	headerString = new String(map.headers.decodeBase64())
+    log.debug "in handler"
+	log.debug headerString
 }
 
 def api(String rooCommand, success = {}) {
 	def rooPath
 	def hubAction
-	
+
 	switch (rooCommand) {
 		case "on":
-			rooPath = "/api/192.168.1.184/start"
+			rooPath = "/api/192.168.1.178/start"
 			log.debug "The start command was sent"
 		break;
 		case "off":
-			rooPath = "/api/192.168.1.184/stop"
+			rooPath = "/api/192.168.1.178/stop"
 			log.debug "The stop command was sent"
 		break;
 		case "refresh":
-			rooPath = "/api/192.168.1.184/status"
+			rooPath = "/api/192.168.1.178/status"
 			log.debug "The Status Command was sent"
 		break;
 	}
@@ -169,6 +212,20 @@ def api(String rooCommand, success = {}) {
 	return hubAction
 }
 
+private subscribeAction(callbackPath="") {
+    def address = device.hub.getDataValue("localIP") + ":" + device.hub.getDataValue("localSrvPortTCP")
+
+    def result = new physicalgraph.device.HubAction(
+        method: "SUBSCRIBE",
+        path: "/api/192.168.1.178/smartthings",
+        headers: [
+            HOST: "${settings.ip}:${settings.port}",
+            CALLBACK: "<http://${address}/notify$callbackPath>",
+            TIMEOUT: "Second-3600"])
+    sendHubCommand(result)
+}
+
+
 def ipSetup() {
 	def hosthex
 	def porthex
@@ -178,8 +235,8 @@ def ipSetup() {
 	if (settings.port) {
 		porthex = convertPortToHex(settings.port)
 	}
-	if (settings.ip && settings.port) {
-		device.deviceNetworkId = "$hosthex:$porthex"
+	if (settings.mac) {
+		device.deviceNetworkId = settings.mac
 	}
 }
 
@@ -200,5 +257,5 @@ private def textVersion() {
 }
 
 private def textCopyright() {
-	def text = "Copyright © 2016 JB. Based on Thinking Cleaner Copyright © 2016 pmjoen"
+	def text = "Copyright © 2016 JB"
 }
