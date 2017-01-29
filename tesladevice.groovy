@@ -153,6 +153,8 @@ def refresh() {
 def api(String rooCommand, success = {}) {
 	def rooPath
 	def hubAction
+    log.debug "DNI: - "
+    log.debug device.deviceNetworkId
 	
 	switch (rooCommand) {
 		case "on":
