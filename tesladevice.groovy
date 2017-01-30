@@ -10,13 +10,12 @@ metadata {
         
 		command "refresh"
 
-		attribute "network","string"
-		//attribute "bin","string"
 	}
     
 	preferences {
 		input("ip", "text", title: "IP Address", description: "Local server IP address", required: true, displayDuringSetup: true)
 		input("port", "number", title: "Port Number", description: "Port Number (Default:5000)", defaultValue: "5000", required: true, displayDuringSetup: true)
+       		input("mac", "text", title: "MAC Addr", description: "mac")
 	}
 
 	tiles {
@@ -67,7 +66,7 @@ def parse(String description) {
 				
 			}
          
-      		switch (result.isvehiclehome) {
+      	switch (result.isvehiclehome) {
 			case "False":
             	log.debug 'Vehicle is away'
 				away()
@@ -133,12 +132,9 @@ def poll() {
 	log.debug "Executing 'poll'"
     
 	if (device.deviceNetworkId != null) {
-		api('refresh')
-        api('ishome')
+		refresh()
 	}
 	else {
-		sendEvent(name: 'status', value: "error" as String)
-		sendEvent(name: 'network', value: "Not Connected" as String)
 		log.debug "DNI: Not set"
 	}
 }
@@ -153,7 +149,7 @@ def refresh() {
 def api(String rooCommand, success = {}) {
 	def rooPath
 	def hubAction
-    log.debug "DNI: - "
+    log.debug "DNI:"
     log.debug device.deviceNetworkId
 	
 	switch (rooCommand) {
@@ -194,7 +190,7 @@ def api(String rooCommand, success = {}) {
 				method: "GET",
 				path: rooPath,
 				headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"]
-				), delayAction(1000), api('refresh')]
+				), delayAction(5000), api('refresh')]
 			}
 			catch (Exception e) {
 				log.debug "Hit Exception $e on $hubAction"
@@ -213,8 +209,8 @@ def ipSetup() {
 	if (settings.port) {
 		porthex = convertPortToHex(settings.port)
 	}
-	if (settings.ip && settings.port) {
-		device.deviceNetworkId = "$hosthex:$porthex"
+	if (settings.mac) {
+		device.deviceNetworkId = settings.mac
 	}
 }
 
