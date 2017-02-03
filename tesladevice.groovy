@@ -3,11 +3,11 @@ import groovy.json.JsonSlurper
 metadata {
 definition (name: "Tesla-3", namespace: "ask4", author: "JB") {
 
-    capability "Polling"
+    	capability "Polling"
 	capability "Refresh"
 	capability "Switch"
-    capability "presenceSensor"
-    capability "Lock"
+    	capability "presenceSensor"
+   	capability "Lock"
 
 	command "refresh"
 
