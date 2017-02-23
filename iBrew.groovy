@@ -1,7 +1,7 @@
 import groovy.json.JsonSlurper
 
 metadata {
-	definition (name: "iBrew-development", namespace: "ask4", author: "JB") {
+	definition (name: "iBrew", namespace: "jonbur", author: "JB") {
 		capability "Polling"
 		capability "Refresh"
 		capability "Switch"
@@ -19,7 +19,8 @@ metadata {
 	preferences {
 		input("ip", "text", title: "IP Address", description: "iBrew Server Address", required: true, displayDuringSetup: true)
 		input("port", "number", title: "Port Number", description: "Port Number (Default:80)", defaultValue: "2080", required: true, displayDuringSetup: true)
-        input("mac", "text", title: "MAC Addr", description: "mac")
+        input("mac", "text", title: "MAC Address", description: "MAC address of server")
+        input("kettleip", "text", title: "Kettle IP address", description: "IP address of the kettle")
 	}
 
 	tiles {
@@ -53,14 +54,25 @@ def parse(String description) {
 	def slurper
 	def result
    
-    //log.debug description
+   
 	map = stringToMap(description)
+  	
 	headerString = new String(map.headers.decodeBase64())
+
 	if (headerString.contains("200 OK")) {
-		bodyString = new String(map.body.decodeBase64())
+    
+    	try {
+			bodyString = new String(map.body.decodeBase64())
+		} catch (Exception e) {
+			// Keep this log for debugging StringIndexOutOfBoundsException issue
+			log.error("Exception decoding bytes in response")
+			throw e
+		}
+    
+		
 		slurper = new JsonSlurper()
 		result = slurper.parseText(bodyString)
-
+	
 		switch (result.status) {
 			case "ready":
 				sendEvent(name: 'switch', value: "off" as String)
@@ -157,39 +169,32 @@ def subscribe (){
 }
 
 
-//Process callbacks
-def processResponse(resp){
-	map = stringToMap(resp)
-	headerString = new String(map.headers.decodeBase64())
-    log.debug "in handler"
-	log.debug headerString
-}
 
-def api(String rooCommand, success = {}) {
-	def rooPath
+def api(String APICommand, success = {}) {
+	def APIPath
 	def hubAction
 
-	switch (rooCommand) {
+	switch (APICommand) {
 		case "on":
-			rooPath = "/api/192.168.1.178/start"
+			APIPath = "/api/" + settings.kettleip + "/start"
 			log.debug "The start command was sent"
 		break;
 		case "off":
-			rooPath = "/api/192.168.1.178/stop"
+			APIPath = "/api/" + settings.kettleip + "/stop"
 			log.debug "The stop command was sent"
 		break;
 		case "refresh":
-			rooPath = "/api/192.168.1.178/status"
+			APIPath = "/api/" + settings.kettleip + "/status"
 			log.debug "The Status Command was sent"
 		break;
 	}
-    
-	switch (rooCommand) {
+  
+	switch (APICommand) {
 		case "refresh":
 			try {
 				hubAction = new physicalgraph.device.HubAction(
 				method: "GET",
-				path: rooPath,
+				path: APIPath,
 				headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"])
 			}
 			catch (Exception e) {
@@ -200,7 +205,7 @@ def api(String rooCommand, success = {}) {
 			try {
 				hubAction = [new physicalgraph.device.HubAction(
 				method: "GET",
-				path: rooPath,
+				path: APIPath,
 				headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"]
 				), delayAction(1000), api('refresh')]
 			}
@@ -217,7 +222,7 @@ private subscribeAction(callbackPath="") {
 
     def result = new physicalgraph.device.HubAction(
         method: "SUBSCRIBE",
-        path: "/api/192.168.1.178/smartthings",
+        path: "/api/" + settings.kettleip + "/smartthings",
         headers: [
             HOST: "${settings.ip}:${settings.port}",
             CALLBACK: "<http://${address}/notify$callbackPath>",
@@ -253,7 +258,7 @@ private delayAction(long time) {
 }
 
 private def textVersion() {
-	def text = "Version 0.1"
+	def text = "Version 0.2"
 }
 
 private def textCopyright() {
