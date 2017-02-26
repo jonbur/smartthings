@@ -1,35 +1,35 @@
 import groovy.json.JsonSlurper
 
 metadata {
-	definition (name: "Tesla", namespace: "ask4", author: "JB") {
+	definition (name: "Tesla-simplified", namespace: "ask4", author: "JB") {
 		
         capability "Polling"
 		capability "Refresh"
-		capability "Switch"
         capability "presenceSensor"
         
-		command "refresh"
+        command "DNIIP"
+        command "DNIMAC"
 
 	}
     
 	preferences {
 		input("ip", "text", title: "IP Address", description: "Local server IP address", required: true, displayDuringSetup: true)
 		input("port", "number", title: "Port Number", description: "Port Number (Default:5000)", defaultValue: "5000", required: true, displayDuringSetup: true)
-       		input("mac", "text", title: "MAC Addr", description: "mac")
+        input("mac", "text", title: "MAC Addr", description: "mac")
 	}
 
 	tiles {
 
-		 standardTile("switch", "device.switch", width: 1, height: 1, canChangeIcon: true) {
-            state "on", label:'${name}', action:"switch.off", icon:"st.Home.home30", backgroundColor:"#79b821", nextState:"turningOff"
-            state "off", label:'${name}', action:"switch.on", icon:"st.Home.home30", backgroundColor:"#ffffff", nextState:"turningOn"
-            state "turningOn", label:'${name}', action:"switch.off", icon:"st.Home.home30", backgroundColor:"#79b821", nextState:"turningOff"
-            state "turningOff", label:'${name}', action:"switch.on", icon:"st.Home.home30", backgroundColor:"#ffffff", nextState:"turningOn"
-            state "offline", label:'${name}', icon:"st.Home.home30", backgroundColor:"#ff0000"
-        }
-
         standardTile("refresh", "device.switch", inactiveLabel: false, height: 1, width: 1, decoration: "flat") {
             state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
+        }
+        
+        standardTile("DNI-MAC", "device.switch", inactiveLabel: false, height: 1, width: 1, decoration: "flat") {
+            state "default", label:"DNI-MAC", action:"DNIMAC", icon:"st.secondary.refresh"
+        }
+        
+       standardTile("DNI-IP", "device.switch", inactiveLabel: false, height: 1, width: 1, decoration: "flat") {
+            state "default", label:"DNI-IP", action:"DNIIP", icon:"st.secondary.refresh"
         }
         
         standardTile("presence", "device.presence", width: 2, height: 2, canChangeBackground: true) {
@@ -38,7 +38,7 @@ metadata {
 	    }
         
         main "presence"
-        details(["presence", "switch", "refresh"])
+        details(["presence", "refresh", "DNI-MAC", "DNI-IP"])
      }
  }
 
@@ -57,15 +57,6 @@ def parse(String description) {
 		result = slurper.parseText(bodyString)
         log.debug result
      
-		switch (result.isclimateon) {
-			case "False":
-				sendEvent(name: 'switch', value: "off" as String)
-			break;
-			case "True":
-				sendEvent(name: 'switch', value: "on" as String)
-				
-			}
-         
       	switch (result.isvehiclehome) {
 			case "False":
             	log.debug 'Vehicle is away'
@@ -103,17 +94,6 @@ def initialize() {
 	poll()
 }
 
-def on() {
-	log.debug "Executing 'on'"
-	ipSetup()
-	api('on')
-}
-
-def off() {
-	log.debug "Executing 'off'"
-    ipSetup()
-	api('off')
-}
 
 def away() {
 	log.debug('not present')
@@ -124,7 +104,6 @@ def present() {
 	log.debug('present')
 	sendEvent(name: 'presence', value: 'present')
 }
-
 
 
 
@@ -142,62 +121,52 @@ def poll() {
 def refresh() {
 	log.debug "Executing 'refresh'"
 	ipSetup()
-	api('refresh')
     api('ishome')
 }
 
 def api(String rooCommand, success = {}) {
 	def rooPath
 	def hubAction
+    
     log.debug "DNI:"
     log.debug device.deviceNetworkId
 	
 	switch (rooCommand) {
-		case "on":
-			rooPath = "/api/starthvac"
-			log.debug "The start command was sent"
-		break;
-		case "off":
-			rooPath = "/api/stophvac"
-			log.debug "The stop command was sent"
-		break;
-		case "refresh":
-			rooPath = "/api/isclimateon"
-			log.debug "The Status Command was sent"
-		break;		
         case "ishome":
 			rooPath = "/api/isvehiclehome"
 			log.debug "Request if vehicle is home sent"
-		break;
-        
-	}
-    
-	switch (rooCommand) {
-		case "refresh":
-			try {
-				hubAction = new physicalgraph.device.HubAction(
-				method: "GET",
-				path: rooPath,
-				headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"])
-			}
-			catch (Exception e) {
-				log.debug "Hit Exception $e on $hubAction"
-			}
-			break;
-		default:
-			try {
-				hubAction = [new physicalgraph.device.HubAction(
-				method: "GET",
-				path: rooPath,
-				headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"]
-				), delayAction(5000), api('refresh')]
-			}
-			catch (Exception e) {
-				log.debug "Hit Exception $e on $hubAction"
-			}
-			break;
-	}
+    }
+
+	try {
+			hubAction = new physicalgraph.device.HubAction(
+			method: "GET",
+			path: rooPath,
+			headers: [HOST: "${settings.ip}:${settings.port}", Accept: "application/json"])
+		}
+		catch (Exception e) {
+			log.debug "Hit Exception $e on $hubAction"
+		}
+
+    log.debug hubAction 
 	return hubAction
+}
+
+def DNIMAC(){
+	log.debug "DNIMAC called"
+	device.deviceNetworkId = settings.mac
+}
+
+def DNIIP(){
+	log.debug "DNIIP called"
+    def hosthex
+	def porthex
+	if (settings.ip) {
+		hosthex = convertIPtoHex(settings.ip)
+	}
+	if (settings.port) {
+		porthex = convertPortToHex(settings.port)
+	}
+	device.deviceNetworkId = "$hosthex:$porthex"
 }
 
 def ipSetup() {
@@ -209,9 +178,6 @@ def ipSetup() {
 	if (settings.port) {
 		porthex = convertPortToHex(settings.port)
 	}
-	if (settings.mac) {
-		device.deviceNetworkId = settings.mac
-	}
 }
 
 private String convertIPtoHex(ip) { 
@@ -221,9 +187,6 @@ private String convertIPtoHex(ip) {
 private String convertPortToHex(port) {
 	String hexport = port.toString().format( '%04x', port.toInteger() )
 	return hexport
-}
-private delayAction(long time) {
-	new physicalgraph.device.HubAction("delay $time")
 }
 
 private def textVersion() {
